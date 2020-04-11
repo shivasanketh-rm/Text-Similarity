@@ -29,7 +29,7 @@ SENTENCE_INDEX = 3
 LABEL_INDEX = 4
 
 #Dataset path
-DATASET = "./dataset/zendesk_challenge.tsv"
+DATASET = "./dataset/dataset.tsv"
 
 #Initialization
 dataset_rows = [] # list consisting of each row of the dataset

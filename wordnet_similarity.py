@@ -25,6 +25,7 @@ def penn_to_wn(tag):
     return None
  
 def tagged_to_synset(word, tag):
+    #print(word, tag)
     wn_tag = penn_to_wn(tag)
     if wn_tag is None:
         return None
@@ -72,6 +73,15 @@ def sentence_similarity(sentence1, sentence2):
     return (int(round(score)))
  
 def model(data):
+    
+    '''
+    To find Word Net Similarity
+    data: Preprocessed dataset - list
+    return:
+    prediction_label: WordNet Prediction label - list
+    '''
+
+    print("Entering Wordnet Similarity module")
     prediction_label = []
     for row in data:
         prediction_label.append(sentence_similarity(row[QUESTION_INDEX], row[SENTENCE_INDEX]))
@@ -79,5 +89,5 @@ def model(data):
 
 if __name__ == "__main__":
     ss1 = 'The president greets the press in Chicago'
-    ss2 = 'Obama speaks to the media in Illinois and not the ai of the world gog og'
+    ss2 = 'Obama speaks to the media in this country'
     print(sentence_similarity(ss1, ss2))

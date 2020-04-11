@@ -12,13 +12,14 @@ import csv
 import sklearn
 import imblearn
 import matplotlib.pyplot as plt
-
+from wordcloud import WordCloud
 
 #user defined module imports
 import preprocessing
 import jaccard_similarity
 import cosine_similarity
 import wordnet_similarity
+import w2v_wordmoverdistance
 
 #Indexing for Column headers 
 QUESTION_ID_INDEX = 0
@@ -28,10 +29,11 @@ SENTENCE_INDEX = 3
 LABEL_INDEX = 4
 
 #Dataset path
-DATASET = "./dataset/zendesk_challenge_long.tsv"
+DATASET = "./dataset/zendesk_challenge.tsv"
 
 #Initialization
 dataset_rows = [] # list consisting of each row of the dataset
+#list to store random positive labels
 random_positive_labels_sensitivity_scores_list = []
 random_positive_labels_precision_scores_list = []
 random_positive_labels_f1_scores_list = []
@@ -39,42 +41,25 @@ random_positive_labels_exc_unrelated_sensitivity_scores_list = []
 random_positive_labels_exc_unrelated_precision_scores_list = []
 random_positive_labels_exc_unrelated_f1_scores_list = []
 
+rand_number_count = 100 #Number of times random labels are to be generated before taking the highest value
+
 #Dictionaries to store Sensitivity, Precision and F1 score computed on the entire dataset
-dict_sensitivity_scores = {
-    "Random Labels Sensitivity Score": 0,
-    "Jaccard Similarity Sensitivity Score": 0,
-    }
-
-dict_precision_scores = {
-    "Random Labels Precision Score": 0,
-    "Jaccard Similarity Precision Score": 0,
-    }
-
-dict_f1_scores = {
-    "Random Labels F1 Score": 0,
-    "Jaccard Similarity F1 Score": 0,
-    }
+dict_sensitivity_scores = {}
+dict_precision_scores = {}
+dict_f1_scores = {}
 
 #Dictionaries to store Sensitivity, Precision and F1 score computed on the dataset with excludes question groups with no related answers
-dict_exc_unrelated_sensitivity_scores = {
-    "Random Labels Exc Unrelated Groups Sensitivity Score": 0,
-    "Jaccard Similarity Exc Unrelated Groups Sensitivity Score": 0,
-    }
+dict_exc_unrelated_sensitivity_scores = {}
+dict_exc_unrelated_precision_scores = {}
+dict_exc_unrelated_f1_scores = {}
 
-dict_exc_unrelated_precision_scores = {
-    "Random Labels Exc Unrelated Groups Precision Score": 0,
-    "Jaccard Similarity Exc Unrelated Groups Precision Score": 0,
-    }
 
-dict_exc_unrelated_f1_scores = {
-    "Random Labels Exc Unrelated Groups F1 Score": 0,
-    "Jaccard Similarity Exc Unrelated Groups F1 Score": 0,
-    }
 
 def rand_bin_array(K, N):
     '''Function to generate list of random binary values
     K: number of 1's to be randomly generated
     N: Length of the list
+    return: array of random variables
     '''
     arr = np.zeros(N)
     arr[:K]  = 1
@@ -82,13 +67,71 @@ def rand_bin_array(K, N):
     return arr.tolist()
 
 #Function to plot bar plots using Dictionaries
-def plot(dict_plot, name):
-    plt.bar(dict_plot.keys(), dict_plot.values())
-    plt.xticks([r for r in range(len(dict_plot.keys()))], [key for key, value in dict_plot.items()], rotation = -5)
+def plot(dict_plot, name, filename):
+    '''
+    Function to plot the metric values
+    dict_plot: Dictionaries of scores - type:dict
+    name: Metric name - type:string
+    filename: Filename for saving - type:string
+    return: None
+    '''
+    m = 0
+    map = []
+    
+    for i in sorted(dict_plot):
+        print("{} = {}" .format(i, dict_plot[i]))
+        plt.bar([m], dict_plot[i], color = 'C0')
+        map.append(i)
+        m += 1
+    plt.xticks([r for r in range(len(map))], [key for key in map], rotation = -10, ha = 'left')
     plt.title(name)
+    plt.ylabel('Score')
+    plt.xlabel('Method')
+    plt.savefig(filename)
     plt.show()
 
+def generate_wordcloud_complete(data, index1, index2, filename):
+    '''
+    Function to plot Word CLoud
+    data: text data - type: list
+    index1: Index for text - type: int
+    index2: Index for text 2- type: int
+    filename: Filename for saving - type:string
+    return: None
+    '''
+    text = []
+    for row in data:
+        text.append((row[index1] + " " + row[index2] + " ").split())
+    
+    text = [item for sublist in text for item in sublist]
+    wordcloud = WordCloud().generate((" ").join(text))
 
+    # Display the generated image:
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis("off")
+    plt.savefig(filename)
+    plt.show()
+
+def generate_wordcloud_partial(data, index,  filename):
+    '''
+    Function to plot Word CLoud
+    data: text data - type: list
+    index: Index for text - type: int
+    filename: Filename for saving - type:string
+    return: None
+    '''
+    text = []
+    for row in data:
+        text.append((row[index] + " ").split())
+    
+    text = [item for sublist in text for item in sublist]
+    wordcloud = WordCloud().generate((" ").join(text))
+
+    # Display the generated image:
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis("off")
+    plt.savefig(filename)
+    plt.show()
 
 with open(DATASET, encoding="utf8", errors='ignore') as dataset_open:
     dataset = csv.reader(dataset_open, delimiter='\t')
@@ -99,6 +142,8 @@ with open(DATASET, encoding="utf8", errors='ignore') as dataset_open:
 dataset = preprocessing.preprocessing(dataset_rows,exclude_absolute_incorrect_question_groups = False)
 dataset_absolute_incorrect_groups_dropped = preprocessing.drop_absolute_incorrect_question_groups(dataset)
 
+
+
 '''
 Jaccard Similarity
 
@@ -108,27 +153,33 @@ Jaccard Similarity
 label, jaccard_prediction = jaccard_similarity.model(dataset[1:])
 
 #random-prediction statistics
-positive_label_count = sum(label)
+positive_label_count = sum(label) #number of positive labels to be present in the random label generator
 
-for i in range(100):
+for i in range(rand_number_count):
+    #generate random positive labels
     random_positive_labels = rand_bin_array(positive_label_count, len(label))
     
+    #Calculate Sensitivity Score and append to list
     random_positive_labels_sensitivity_scores = imblearn.metrics.sensitivity_score(label, random_positive_labels )
     random_positive_labels_sensitivity_scores_list.append(random_positive_labels_sensitivity_scores)
     
+    #Calculate Precision Score and append to list
     random_positive_labels_precision_scores = sklearn.metrics.precision_score(label, random_positive_labels)
     random_positive_labels_precision_scores_list.append(random_positive_labels_precision_scores)
     
+    #Calculate F1 Score and append to list
     random_positive_labels_f1_scores = sklearn.metrics.f1_score(label, random_positive_labels)
     random_positive_labels_f1_scores_list.append(random_positive_labels_f1_scores)
 
-dict_sensitivity_scores["Random Labels Sensitivity Score"] = max(random_positive_labels_sensitivity_scores_list)
-dict_precision_scores["Random Labels Precision Score"] = max(random_positive_labels_sensitivity_scores_list)
-dict_f1_scores["Random Labels F1 Score"] = max(random_positive_labels_sensitivity_scores_list)
+#Take max value of all the calculated random scores
+dict_sensitivity_scores["Random Labels"] = max(random_positive_labels_sensitivity_scores_list)
+dict_precision_scores["Random Labels"] = max(random_positive_labels_sensitivity_scores_list)
+dict_f1_scores["Random Labels"] = max(random_positive_labels_sensitivity_scores_list)
 
-dict_sensitivity_scores["Jaccard Similarity Sensitivity Score"] = imblearn.metrics.sensitivity_score(label, jaccard_prediction )
-dict_precision_scores["Jaccard Similarity Precision Score"] = sklearn.metrics.precision_score(label, jaccard_prediction)
-dict_f1_scores["Jaccard Similarity F1 Score"] = sklearn.metrics.f1_score(label, jaccard_prediction)
+#Calculate Jaccard Scores
+dict_sensitivity_scores["Jaccard Similarity"] = imblearn.metrics.sensitivity_score(label, jaccard_prediction )
+dict_precision_scores["Jaccard Similarity"] = sklearn.metrics.precision_score(label, jaccard_prediction)
+dict_f1_scores["Jaccard Similarity"] = sklearn.metrics.f1_score(label, jaccard_prediction)
 
 
 ##########################################################################################################################
@@ -138,27 +189,33 @@ dict_f1_scores["Jaccard Similarity F1 Score"] = sklearn.metrics.f1_score(label, 
 label_exc_unrelated, jaccard_prediction_exc_unrelated = jaccard_similarity.model(dataset_absolute_incorrect_groups_dropped[1:])
 
 #random-prediction statistics
-positive_label_count_exc_unrelated = sum(label_exc_unrelated)
+positive_label_count_exc_unrelated = sum(label_exc_unrelated) #number of positive labels to be present in the random label generator
 
-for i in range(100):
+for i in range(rand_number_count):
+    #generate random positive labels
     random_positive_labels_exc_unrelated = rand_bin_array(positive_label_count_exc_unrelated, len(label_exc_unrelated))
     
+    #generate random positive labels
     random_positive_labels_exc_unrelated_sensitivity_scores = imblearn.metrics.sensitivity_score(label_exc_unrelated, random_positive_labels_exc_unrelated )
     random_positive_labels_exc_unrelated_sensitivity_scores_list.append(random_positive_labels_exc_unrelated_sensitivity_scores)
     
+    #Calculate Precision Score and append to list
     random_positive_labels_exc_unrelated_precision_scores = sklearn.metrics.precision_score(label_exc_unrelated, random_positive_labels_exc_unrelated)
     random_positive_labels_exc_unrelated_precision_scores_list.append(random_positive_labels_exc_unrelated_precision_scores)
     
+    #Calculate F1 Score and append to list
     random_positive_labels_exc_unrelated_f1_scores = sklearn.metrics.f1_score(label_exc_unrelated, random_positive_labels_exc_unrelated)
     random_positive_labels_exc_unrelated_f1_scores_list.append(random_positive_labels_exc_unrelated_f1_scores)
 
-dict_exc_unrelated_sensitivity_scores["Random Labels Exc Unrelated Groups Sensitivity Score"] = max(random_positive_labels_exc_unrelated_sensitivity_scores_list)
-dict_exc_unrelated_precision_scores["Random Labels Exc Unrelated Groups Precision Score"] = max(random_positive_labels_exc_unrelated_sensitivity_scores_list)
-dict_exc_unrelated_f1_scores["Random Labels Exc Unrelated Groups F1 Score"] = max(random_positive_labels_exc_unrelated_sensitivity_scores_list)
+#Take max value of all the calculated random scores
+dict_exc_unrelated_sensitivity_scores["Random Labels"] = max(random_positive_labels_exc_unrelated_sensitivity_scores_list)
+dict_exc_unrelated_precision_scores["Random Labels"] = max(random_positive_labels_exc_unrelated_sensitivity_scores_list)
+dict_exc_unrelated_f1_scores["Random Labels"] = max(random_positive_labels_exc_unrelated_sensitivity_scores_list)
 
-dict_exc_unrelated_sensitivity_scores["Jaccard Similarity Exc Unrelated Groups Sensitivity Score"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, jaccard_prediction_exc_unrelated )
-dict_exc_unrelated_precision_scores["Jaccard Similarity Exc Unrelated Groups Precision Score"] = sklearn.metrics.precision_score(label_exc_unrelated, jaccard_prediction_exc_unrelated)
-dict_exc_unrelated_f1_scores["Jaccard Similarity Exc Unrelated Groups F1 Score"] = sklearn.metrics.f1_score(label_exc_unrelated, jaccard_prediction_exc_unrelated)
+#Calculate Jaccard Scores
+dict_exc_unrelated_sensitivity_scores["Jaccard Similarity"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, jaccard_prediction_exc_unrelated )
+dict_exc_unrelated_precision_scores["Jaccard Similarity"] = sklearn.metrics.precision_score(label_exc_unrelated, jaccard_prediction_exc_unrelated)
+dict_exc_unrelated_f1_scores["Jaccard Similarity"] = sklearn.metrics.f1_score(label_exc_unrelated, jaccard_prediction_exc_unrelated)
 
 
 
@@ -167,42 +224,100 @@ dict_exc_unrelated_f1_scores["Jaccard Similarity Exc Unrelated Groups F1 Score"]
 Cosine Similarity
 '''
 
-#Cosine Similarity using TF-IDF
-cosine_prediction_tf_idf_complete_dataset = cosine_similarity.model_tf_idf(dataset[1:])
-dict_sensitivity_scores["Cosine Similarity TF-IDF Sensitivity Score"] = imblearn.metrics.sensitivity_score(label, cosine_prediction_tf_idf_complete_dataset )
-dict_precision_scores["Cosine Similarity TF-IDF Precision Score"] = sklearn.metrics.precision_score(label, cosine_prediction_tf_idf_complete_dataset)
-dict_f1_scores["Cosine Similarity TF-IDF F1 Score"] = sklearn.metrics.f1_score(label, cosine_prediction_tf_idf_complete_dataset)
+#Cosine Similarity using CV
+cosine_prediction_CV_complete_dataset, cosine_prediction_CV_2gram_complete_dataset = cosine_similarity.model(dataset[1:])
+dict_sensitivity_scores["Cosine Similarity CV ngram-1"] = imblearn.metrics.sensitivity_score(label, cosine_prediction_CV_complete_dataset )
+dict_precision_scores["Cosine Similarity CV ngram-1"] = sklearn.metrics.precision_score(label, cosine_prediction_CV_complete_dataset)
+dict_f1_scores["Cosine Similarity CV ngram-1"] = sklearn.metrics.f1_score(label, cosine_prediction_CV_complete_dataset)
+
+#Cosine Similarity using CV with n-gram = (1,2)
+dict_sensitivity_scores["Cosine CV ngram-2"] = imblearn.metrics.sensitivity_score(label, cosine_prediction_CV_2gram_complete_dataset )
+dict_precision_scores["Cosine CV ngram-2"] = sklearn.metrics.precision_score(label, cosine_prediction_CV_2gram_complete_dataset)
+dict_f1_scores["Cosine CV ngram-2"] = sklearn.metrics.f1_score(label, cosine_prediction_CV_2gram_complete_dataset)
 
 
-cosine_prediction_tf_idf_exc_unrelated_dataset = cosine_similarity.model_tf_idf(dataset_absolute_incorrect_groups_dropped[1:])
-dict_exc_unrelated_sensitivity_scores["Cosine Similarity TF-IDF Exc Unrelated Groups Sensitivity Score"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, cosine_prediction_tf_idf_exc_unrelated_dataset )
-dict_exc_unrelated_precision_scores["Cosine Similarity TF-IDF Exc Unrelated Groups Precision Score"] = sklearn.metrics.precision_score(label_exc_unrelated, cosine_prediction_tf_idf_exc_unrelated_dataset)
-dict_exc_unrelated_f1_scores["Cosine Similarity TF-IDF Exc Unrelated Groups F1 Score"] = sklearn.metrics.f1_score(label_exc_unrelated, cosine_prediction_tf_idf_exc_unrelated_dataset)
+#Complete Unrelated Groups
+#Cosine Similarity using CV
+cosine_prediction_CV_exc_unrelated_dataset, cosine_prediction_CV_2gram_exc_unrelated_dataset  = cosine_similarity.model(dataset_absolute_incorrect_groups_dropped[1:])
+dict_exc_unrelated_sensitivity_scores["Cosine CV ngram-1"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, cosine_prediction_CV_exc_unrelated_dataset)
+dict_exc_unrelated_precision_scores["Cosine CV ngram-1"] = sklearn.metrics.precision_score(label_exc_unrelated, cosine_prediction_CV_exc_unrelated_dataset)
+dict_exc_unrelated_f1_scores["Cosine CV ngram-1"] = sklearn.metrics.f1_score(label_exc_unrelated, cosine_prediction_CV_exc_unrelated_dataset)
 
+#Cosine Similarity using CV with n-gram = (1,2)
+dict_exc_unrelated_sensitivity_scores["Cosine CV ngram-2"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, cosine_prediction_CV_2gram_exc_unrelated_dataset )
+dict_exc_unrelated_precision_scores["Cosine CV ngram-2"] = sklearn.metrics.precision_score(label_exc_unrelated, cosine_prediction_CV_2gram_exc_unrelated_dataset)
+dict_exc_unrelated_f1_scores["Cosine CV ngram-2"] = sklearn.metrics.f1_score(label_exc_unrelated, cosine_prediction_CV_2gram_exc_unrelated_dataset)
 #################################################################
 
-#Cosine Similarity using Glove Model
-'''
-cosine_similarity_glove_complete_dataset = cosine_similarity.model_glove(dataset[1:])
-dict_sensitivity_scores["Cosine Similarity Glove Sensitivity Score"] = imblearn.metrics.sensitivity_score(label, cosine_similarity_glove_complete_dataset )
-dict_precision_scores["Cosine Similarity Glove Precision Score"] = sklearn.metrics.precision_score(label, cosine_similarity_glove_complete_dataset)
-dict_f1_scores["Cosine Similarity Glove F1 Score"] = sklearn.metrics.f1_score(label, cosine_similarity_glove_complete_dataset)
-
-'''
 
 '''
 Wordnet Similarity
 '''
-wordnet_similarity_glove_complete_dataset = wordnet_similarity.model(dataset[1:])
-dict_sensitivity_scores["Wordnet Similarity Glove Sensitivity Score"] = imblearn.metrics.sensitivity_score(label, wordnet_similarity_glove_complete_dataset )
-dict_precision_scores["Wordnet Similarity Glove Precision Score"] = sklearn.metrics.precision_score(label, wordnet_similarity_glove_complete_dataset)
-dict_f1_scores["Wordnet Similarity Glove F1 Score"] = sklearn.metrics.f1_score(label, wordnet_similarity_glove_complete_dataset)
+
+#Wordnet Similarity
+wordnet_similarity_complete_dataset = wordnet_similarity.model(dataset[1:])
+dict_sensitivity_scores["Wordnet Similarity"] = imblearn.metrics.sensitivity_score(label, wordnet_similarity_complete_dataset )
+dict_precision_scores["Wordnet Similarity"] = sklearn.metrics.precision_score(label, wordnet_similarity_complete_dataset)
+dict_f1_scores["Wordnet Similarity"] = sklearn.metrics.f1_score(label, wordnet_similarity_complete_dataset)
+
+# ####################################################################################
+
+#Complete Unrelated Groups
+#Wordnet Similarity
+wordnet_similarity_exc_unrelated_dataset = wordnet_similarity.model(dataset_absolute_incorrect_groups_dropped[1:])
+dict_exc_unrelated_sensitivity_scores["Wordnet Similarity"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, wordnet_similarity_exc_unrelated_dataset )
+dict_exc_unrelated_precision_scores["Wordnet Similarity"] = sklearn.metrics.precision_score(label_exc_unrelated, wordnet_similarity_exc_unrelated_dataset)
+dict_exc_unrelated_f1_scores["Wordnet Similarity"] = sklearn.metrics.f1_score(label_exc_unrelated, wordnet_similarity_exc_unrelated_dataset)
+
+
+'''
+Word2Vec Word Mover distance
+'''
+
+#Using Common Bag of Words
+w2v_word_mover_cbow_similarity, w2v_word_mover_sg_similarity  = w2v_wordmoverdistance.model(dataset[1:])
+dict_sensitivity_scores["W2V WordMover CBOW"] = imblearn.metrics.sensitivity_score(label, w2v_word_mover_cbow_similarity )
+dict_precision_scores["W2V WordMover CBOW"] = sklearn.metrics.precision_score(label, w2v_word_mover_cbow_similarity)
+dict_f1_scores["W2V WordMover CBOW"] = sklearn.metrics.f1_score(label, w2v_word_mover_cbow_similarity)
+
+#Using Skip Gram
+dict_sensitivity_scores["W2V WordMover SG"] = imblearn.metrics.sensitivity_score(label, w2v_word_mover_cbow_similarity )
+dict_precision_scores["W2V WordMover SG"] = sklearn.metrics.precision_score(label, w2v_word_mover_cbow_similarity)
+dict_f1_scores["W2V WordMover SG"] = sklearn.metrics.f1_score(label, w2v_word_mover_cbow_similarity)
+
+####################################################################
+
+#Complete Unrelated Groups
+#Using Common Bag of Words
+w2v_word_mover_cbow_similarity_exc_unrelated_dataset, w2v_word_mover_sg_similarity_exc_unrelated_dataset  = w2v_wordmoverdistance.model(dataset_absolute_incorrect_groups_dropped[1:])
+dict_exc_unrelated_sensitivity_scores["W2V WordMover CBOW"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, w2v_word_mover_cbow_similarity_exc_unrelated_dataset )
+dict_exc_unrelated_precision_scores["W2V WordMover CBOW"] = sklearn.metrics.precision_score(label_exc_unrelated, w2v_word_mover_cbow_similarity_exc_unrelated_dataset)
+dict_exc_unrelated_f1_scores["W2V WordMover CBOW"] = sklearn.metrics.f1_score(label_exc_unrelated, w2v_word_mover_cbow_similarity_exc_unrelated_dataset)
+
+#Using Skip Gram
+dict_exc_unrelated_sensitivity_scores["W2V WordMover SG"] = imblearn.metrics.sensitivity_score(label_exc_unrelated, w2v_word_mover_cbow_similarity_exc_unrelated_dataset )
+dict_exc_unrelated_precision_scores["W2V WordMover SG"] = sklearn.metrics.precision_score(label_exc_unrelated, w2v_word_mover_cbow_similarity_exc_unrelated_dataset)
+dict_exc_unrelated_f1_scores["W2V WordMover SG"] = sklearn.metrics.f1_score(label_exc_unrelated, w2v_word_mover_cbow_similarity_exc_unrelated_dataset)
 
 
 '''
 Visualization
 '''
 
+#Plotting
+plot(dict_sensitivity_scores, "Sensitivity Scores", "Complete_dataset_Sensitivity.png")
+plot(dict_precision_scores, "Precision Scores", "Complete_dataset_Precision.png")
+plot(dict_f1_scores, "F1 Scores", "Complete_dataset_F1.png")
+plot(dict_exc_unrelated_sensitivity_scores, "Sensitivity Scores excluding complete irrelevant questions groups", "Exc_unrelated_Sensitivity.png")
+plot(dict_exc_unrelated_precision_scores, "Precision Scores excluding complete irrelevant questions groups", "Exc_unrelated_Precision.png")
+plot(dict_exc_unrelated_f1_scores, "F1 Scores excluding complete irrelevant questions groups", "Exc_unrelated_F1.png")
+
+#Generate Word cloud
+generate_wordcloud_complete(dataset[1:], QUESTION_INDEX, SENTENCE_INDEX, "WordCloud_all_text.png")
+generate_wordcloud_partial(dataset[1:], QUESTION_INDEX, "WordCloud_Question.png")
+generate_wordcloud_partial(dataset[1:], SENTENCE_INDEX, "WordCloud_Sentence.png")
+
+#Print Scores
 print(dict_sensitivity_scores)
 print(dict_precision_scores)
 print(dict_f1_scores)
@@ -210,10 +325,3 @@ print(dict_f1_scores)
 print(dict_exc_unrelated_sensitivity_scores)
 print(dict_exc_unrelated_precision_scores)
 print(dict_exc_unrelated_f1_scores)
-
-plot(dict_sensitivity_scores, "Sensitivity Scores")
-plot(dict_precision_scores, "Precision Scores")
-plot(dict_f1_scores, "F1 Scores")
-plot(dict_exc_unrelated_sensitivity_scores, "Sensitivity Scores excluding complete irrelevant questions groups")
-plot(dict_exc_unrelated_precision_scores, "Precision Scores excluding complete irrelevant questions groups")
-plot(dict_exc_unrelated_f1_scores, "F1 Scores excluding complete irrelevant questions groups")

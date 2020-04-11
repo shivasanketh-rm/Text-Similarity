@@ -3,9 +3,6 @@ function to find jaccard similarity
 
 '''
 
-#Imports
-
-
 QUESTION_ID_INDEX = 0
 QUESTION_INDEX = 1
 DOCUMENT_TITLE_INDEX = 2
@@ -15,6 +12,12 @@ LABEL_INDEX = 4
 
 
 def get_jaccard_sim(str1, str2): 
+    '''
+    To find Jaccard similarity
+    str1: Sentence 1
+    str2: Sentence 2
+    return: Jaccard Similarity Score - Int
+    '''
     a = set(str1.split()) 
     b = set(str2.split())
     c = a.intersection(b)
@@ -27,6 +30,15 @@ def get_jaccard_sim(str1, str2):
 
 
 def model(data):
+    '''
+    To find Jaccard Similarity and actual labels
+    data: Preprocessed dataset - list
+    return:
+    actual_label: Actual label of dataset - list
+    prediction_label: Jaccard Prediction label - list
+    '''
+
+    print("Entering Jaccard Similarity module")
     actual_label = []
     prediction_label = []
     for row in data:

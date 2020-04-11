@@ -30,7 +30,7 @@ def func_lemmatize(s):
     return s
 
 def preprocessing(dataset_rows, exclude_absolute_incorrect_question_groups = False):
-    
+    print("Entering Preprocessing Block")
 
     QUESTION_ID_INDEX = 0
     QUESTION_INDEX = 1
@@ -69,7 +69,7 @@ def preprocessing(dataset_rows, exclude_absolute_incorrect_question_groups = Fal
 
     dataframe_list = [dataframe.columns.values.tolist()] + dataframe.values.tolist()
     
-    
+    #Remove absolute incorrect question groups    
     if exclude_absolute_incorrect_question_groups == True:
         groups = dataframe.groupby("QUESTION_ID_INDEX").filter(lambda x: x["LABEL_INDEX"].sum() > 0)
         dataframe_list = [groups.columns.values.tolist()] + groups.values.tolist()
@@ -77,6 +77,8 @@ def preprocessing(dataset_rows, exclude_absolute_incorrect_question_groups = Fal
 
     return dataframe_list
 
+
+#Remove absolute incorrect question groups
 def drop_absolute_incorrect_question_groups(dataset_rows):
     dataframe = pd.DataFrame(dataset_rows)
     dataframe = dataframe.rename(columns=dataframe.iloc[0]).drop(dataframe.index[0])
